@@ -1,0 +1,137 @@
+import org.apache.tools.ant.filters.ReplaceTokens
+
+plugins {
+  id 'java'
+  id 'war'
+  id 'maven-publish'
+
+  id 'com.diffplug.spotless' version '5.7.0'
+  id 'com.github.node-gradle.node' version '2.0.0'
+  id 'org.springframework.boot' version '2.2.6.RELEASE'
+  id 'io.spring.dependency-management' version '1.0.9.RELEASE'
+  id 'org.owasp.dependencycheck' version '5.3.0'
+}
+
+node {
+  // Version of node to use.
+  version = '10.14.2'
+
+  // Base URL for fetching node distributions (change if you have a mirror)
+  distBaseUrl = 'https://nodejs.org/dist'
+
+  // If true, it will download node using above parameters
+  download  = true
+
+  // Set the work directory where node_modules should be located
+  workDir = file("${project.buildDir}/nodejs")
+
+  // set the work directory for Yarn
+  npmWorkDir = file("${project.buildDir}/npm")
+
+   nodeModulesDir = file("src/main/react")
+}
+
+group = 'edu.oakland'
+version = '1.0.3'
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+publishing {
+  publications {
+    mavenWeb(MavenPublication) {
+      version = getVersion()
+      from components.web
+    }
+  }
+  repositories {
+    maven {
+      url "https://maven.oakland.edu/repository/uPortal"
+      name "nexus"
+      credentials {
+        username "$mavenUser"
+        password "$mavenPassword"
+      }
+    }
+  }
+}
+
+repositories {
+  maven {
+    url "https://maven.oakland.edu/repository/public"
+    name "nexus"
+    credentials {
+      username "$mavenUser"
+      password "$mavenPassword"
+    }
+  }
+  mavenLocal()
+  mavenCentral()
+}
+
+processResources {
+  filesMatching("**/application.properties") {
+    def props = new Properties()
+
+	file(System.getenv("PORTAL_HOME") + "/global.properties").withInputStream {
+      props.load(it)
+	}
+
+	file(System.getenv("PORTAL_HOME") + "/uPortal.properties").withInputStream {
+      props.load(it)
+	}
+
+	filter(ReplaceTokens, tokens: props)
+  }
+}
+
+bootWar {
+  archiveName project.name + '.war'
+}
+
+war {
+  archiveName project.name + '.war'
+}
+
+spotless {
+  java {
+    googleJavaFormat()
+    importOrder "edu", "java", "com org", ""
+    removeUnusedImports()
+    trimTrailingWhitespace()
+  }
+}
+
+task runBuild(type: NpmTask) {
+    args = ['run', 'build']
+}
+
+task copyTask(type: Copy) {
+    from 'src/main/react/build/static'
+    into 'src/main/webapp'
+}
+
+clean.finalizedBy 'npm_install'
+npm_install.finalizedBy 'runBuild'
+runBuild.finalizedBy 'copyTask'
+copyTask.finalizedBy 'spotlessApply'
+
+test {
+	useJUnitPlatform()
+}
+
+dependencies {
+	implementation 'org.jasig.portal:uPortal-soffit-renderer:5.6.0'
+  implementation 'org.springframework.boot:spring-boot-starter-data-rest'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.jasypt:jasypt:1.9.2'
+	implementation 'edu.oakland:soffit-auth:1.0.0.RC'
+  implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+	compileOnly 'org.projectlombok:lombok'
+  implementation 'org.apache.pdfbox:pdfbox:2.0.20'
+	annotationProcessor 'org.projectlombok:lombok'
+	runtimeOnly 'com.oracle:ojdbc8:12.2.0.1.0'
+	providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat'
+	testImplementation('org.springframework.boot:spring-boot-starter-test') {
+		exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+	}
+}
